@@ -12,12 +12,18 @@ from openai import BadRequestError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
     ChatCompletionMessage,
-    ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
     ChatCompletionSystemMessageParam,
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
 )
+
+# Handle ChatCompletionMessageFunctionToolCallParam separately
+try:
+    from openai.types.chat import ChatCompletionMessageFunctionToolCallParam
+except ImportError:
+    # Fallback for older versions
+    ChatCompletionMessageFunctionToolCallParam = Dict[str, Any]
 
 # Handle different OpenAI library versions for imports
 try:
@@ -213,17 +219,29 @@ def _convert_content_to_chat_message(
             content=content.content,
         )
         if isinstance(content, conversation.AssistantContent) and content.tool_calls:
-            param["tool_calls"] = [
-                ChatCompletionMessageFunctionToolCallParam(
-                    type="function",
-                    id=tool_call.id,
-                    function=Function(
-                        arguments=json.dumps(tool_call.tool_args),
-                        name=tool_call.tool_name,
-                    ),
-                )
-                for tool_call in content.tool_calls
-            ]
+            tool_calls = []
+            for tool_call in content.tool_calls:
+                try:
+                    # Try new OpenAI format first
+                    tool_calls.append(ChatCompletionMessageFunctionToolCallParam(
+                        type="function",
+                        id=tool_call.id,
+                        function=Function(
+                            arguments=json.dumps(tool_call.tool_args),
+                            name=tool_call.tool_name,
+                        ),
+                    ))
+                except (TypeError, AttributeError):
+                    # Fallback to dict format for older versions
+                    tool_calls.append({
+                        "type": "function",
+                        "id": tool_call.id,
+                        "function": {
+                            "arguments": json.dumps(tool_call.tool_args),
+                            "name": tool_call.tool_name,
+                        },
+                    })
+            param["tool_calls"] = tool_calls
         return param
     LOGGER.warning("Could not convert message to Completions API: %s", content)
     return None
