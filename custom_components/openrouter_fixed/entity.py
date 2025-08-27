@@ -180,24 +180,69 @@ def _convert_content_to_chat_message(
             
             # Add attachments (images, etc.)
             for attachment in content.attachments:
-                if attachment.content_type and attachment.content_type.startswith("image/"):
+                # Debug: Log attachment structure
+                LOGGER.debug("Attachment type: %s", type(attachment))
+                LOGGER.debug("Attachment attributes: %s", dir(attachment))
+                
+                # Try different ways to get content type
+                content_type = None
+                if hasattr(attachment, 'content_type'):
+                    content_type = attachment.content_type
+                elif hasattr(attachment, 'mime_type'):
+                    content_type = attachment.mime_type
+                elif hasattr(attachment, 'type'):
+                    content_type = attachment.type
+                else:
+                    # Try to guess from filename if available
+                    if hasattr(attachment, 'filename'):
+                        filename = attachment.filename.lower()
+                        if filename.endswith(('.jpg', '.jpeg')):
+                            content_type = 'image/jpeg'
+                        elif filename.endswith('.png'):
+                            content_type = 'image/png'
+                        elif filename.endswith('.webp'):
+                            content_type = 'image/webp'
+                        elif filename.endswith('.gif'):
+                            content_type = 'image/gif'
+                    # Default to image/jpeg if we can't determine
+                    if not content_type:
+                        content_type = 'image/jpeg'
+                        LOGGER.warning("Could not determine content type, defaulting to: %s", content_type)
+                
+                LOGGER.info("Processing attachment with content type: %s", content_type)
+                
+                if content_type and content_type.startswith("image/"):
                     try:
+                        # Get the content data
+                        image_content = None
+                        if hasattr(attachment, 'content'):
+                            image_content = attachment.content
+                        elif hasattr(attachment, 'data'):
+                            image_content = attachment.data
+                        elif hasattr(attachment, 'url'):
+                            # If it's a URL, we might need to fetch it
+                            LOGGER.warning("Attachment has URL instead of content: %s", attachment.url)
+                            continue
+                        
+                        if not image_content:
+                            LOGGER.error("Could not find image content in attachment")
+                            continue
+                            
                         # Convert image attachment to base64 URL format
-                        # Check if content is already base64 or needs encoding
-                        if isinstance(attachment.content, bytes):
-                            image_data = base64.b64encode(attachment.content).decode('utf-8')
+                        if isinstance(image_content, bytes):
+                            image_data = base64.b64encode(image_content).decode('utf-8')
                         else:
                             # Assume it's already base64 if string
-                            image_data = attachment.content.replace('data:', '').split(',')[-1] if 'data:' in str(attachment.content) else str(attachment.content)
+                            image_data = image_content.replace('data:', '').split(',')[-1] if 'data:' in str(image_content) else str(image_content)
                         
                         message_parts.append({
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:{attachment.content_type};base64,{image_data}",
+                                "url": f"data:{content_type};base64,{image_data}",
                                 "detail": "high"  # Use high detail for better analysis
                             }
                         })
-                        LOGGER.debug("Added image attachment to message: %s", attachment.content_type)
+                        LOGGER.info("Successfully added image attachment to message: %s", content_type)
                     except Exception as e:
                         LOGGER.error("Failed to process image attachment: %s", e)
                         # Add error message to chat instead
