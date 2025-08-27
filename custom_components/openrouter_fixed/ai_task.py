@@ -40,10 +40,19 @@ class OpenRouterAITaskEntity(
     """OpenRouter AI Task entity."""
 
     _attr_name = None
-    _attr_supported_features = (
-        ai_task.AITaskEntityFeature.GENERATE_DATA | 
-        ai_task.AITaskEntityFeature.ATTACHMENTS
-    )
+    
+    def __init__(self, *args, **kwargs):
+        """Initialize the AI Task entity."""
+        super().__init__(*args, **kwargs)
+        
+        # Dynamically set supported features based on HA version
+        if hasattr(ai_task.AITaskEntityFeature, 'ATTACHMENTS'):
+            self._attr_supported_features = (
+                ai_task.AITaskEntityFeature.GENERATE_DATA | 
+                ai_task.AITaskEntityFeature.ATTACHMENTS
+            )
+        else:
+            self._attr_supported_features = ai_task.AITaskEntityFeature.GENERATE_DATA
 
     async def _async_generate_data(
         self,
@@ -51,13 +60,14 @@ class OpenRouterAITaskEntity(
         chat_log: conversation.ChatLog,
     ) -> ai_task.GenDataTaskResult:
         """Handle a generate data task."""
-        _LOGGER.debug("Processing AI task with %d attachments", len(task.attachments) if task.attachments else 0)
-        
-        # Add attachments to the chat log if present
-        if task.attachments:
+        # Check if task has attachments attribute (newer HA versions)
+        if hasattr(task, 'attachments') and task.attachments:
+            _LOGGER.debug("Processing AI task with %d attachments", len(task.attachments))
             _LOGGER.info("Adding %d attachments to chat log for vision analysis", len(task.attachments))
             # The attachments should already be in the chat_log via Home Assistant's processing
             # Our entity.py image handling will pick them up automatically
+        else:
+            _LOGGER.debug("Processing AI task without attachments support")
         
         await self._async_handle_chat_log(chat_log, task.name, task.structure)
 
