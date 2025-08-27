@@ -210,11 +210,22 @@ class AITaskDataFlowHandler(OpenRouterSubentryFlowHandler):
         except Exception:
             _LOGGER.exception("Unexpected exception")
             return self.async_abort(reason="unknown")
-        options = [
-            SelectOptionDict(value=model.id, label=model.name)
-            for model in self.models.values()
-            if SupportedParameter.STRUCTURED_OUTPUTS in model.supported_parameters
-        ]
+        # Include all models for AI tasks, but prioritize structured output models
+        options = []
+        structured_models = []
+        other_models = []
+        
+        for model in self.models.values():
+            option = SelectOptionDict(value=model.id, label=model.name)
+            if SupportedParameter.STRUCTURED_OUTPUTS in model.supported_parameters:
+                structured_models.append(option)
+            else:
+                # Include vision models even without structured output support
+                # This allows Claude-3, GPT-4V, etc. to be used for image analysis
+                other_models.append(option)
+        
+        # Structured output models first, then others
+        options = structured_models + other_models
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(

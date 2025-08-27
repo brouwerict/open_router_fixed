@@ -1,0 +1,76 @@
+{
+  "title": "OpenRouter Fixed",
+  "config": {
+    "step": {
+      "user": {
+        "data": {
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "An OpenRouter API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Service is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure OpenRouter Fixed"
+      }
+    }
+  },
+  "config_subentries": {
+    "conversation": {
+      "step": {
+        "user": {
+          "description": "Configure the new conversation agent",
+          "data": {
+            "model": "Model",
+            "prompt": "Prompt Template",
+            "llm_hass_api": "LLM Hass API"
+          },
+          "data_description": {
+            "model": "The model to use for the conversation agent. For image analysis, choose vision models like gpt-4-vision-preview, claude-3-haiku, claude-3-sonnet, or claude-3-opus.",
+            "prompt": "Instruct how the LLM should respond. This can be a template."
+          }
+        }
+      },
+      "initiate_flow": {
+        "user": "Add conversation agent"
+      },
+      "entry_type": "Conversation agent",
+      "abort": {
+        "cannot_connect": "Failed to connect",
+        "unknown": "Unexpected error occurred"
+      }
+    },
+    "ai_task_data": {
+      "step": {
+        "user": {
+          "description": "Configure the AI task for data generation. Use vision models for image analysis (camera snapshots, uploaded images, etc.)",
+          "data": {
+            "model": "Model"
+          },
+          "data_description": {
+            "model": "The model to use for AI tasks. For analyzing images/camera snapshots, choose vision models like gpt-4-vision-preview, claude-3-haiku, claude-3-sonnet, or claude-3-opus."
+          }
+        }
+      },
+      "initiate_flow": {
+        "user": "Add AI task"
+      },
+      "entry_type": "AI task",
+      "abort": {
+        "cannot_connect": "Failed to connect",
+        "unknown": "Unexpected error occurred"
+      }
+    }
+  }
+}
