@@ -157,12 +157,20 @@ class OpenRouterAITaskEntity(
                 conversation_id=chat_log.conversation_id,
                 data=text,
             )
+        
+        # Try to parse JSON response for structured output
         try:
             data = json_loads(text)
+            _LOGGER.debug("Successfully parsed structured response")
         except JSONDecodeError as err:
-            raise HomeAssistantError(
-                "Error with OpenRouter structured response"
-            ) from err
+            _LOGGER.error("Failed to parse JSON response: %s", text[:500])
+            _LOGGER.error("JSON decode error: %s", err)
+            # For now, return the raw text instead of crashing
+            _LOGGER.warning("Returning raw text instead of structured data")
+            return ai_task.GenDataTaskResult(
+                conversation_id=chat_log.conversation_id,
+                data=text,
+            )
 
         return ai_task.GenDataTaskResult(
             conversation_id=chat_log.conversation_id,

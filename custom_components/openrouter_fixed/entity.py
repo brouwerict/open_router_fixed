@@ -181,8 +181,21 @@ def _convert_content_to_chat_message(
             # Add attachments (images, etc.)
             for attachment in content.attachments:
                 # Debug: Log attachment structure
-                LOGGER.debug("Attachment type: %s", type(attachment))
-                LOGGER.debug("Attachment attributes: %s", dir(attachment))
+                LOGGER.info("=== ATTACHMENT DEBUG INFO ===")
+                LOGGER.info("Attachment type: %s", type(attachment))
+                LOGGER.info("Attachment attributes: %s", dir(attachment))
+                
+                # Log ALL attribute values
+                for attr in dir(attachment):
+                    if not attr.startswith('_'):
+                        try:
+                            value = getattr(attachment, attr)
+                            if callable(value):
+                                LOGGER.info("Attachment.%s = <method>", attr)
+                            else:
+                                LOGGER.info("Attachment.%s = %s", attr, repr(value)[:200])
+                        except Exception as e:
+                            LOGGER.info("Attachment.%s = <error: %s>", attr, e)
                 
                 # Try different ways to get content type
                 content_type = None
@@ -213,20 +226,48 @@ def _convert_content_to_chat_message(
                 
                 if content_type and content_type.startswith("image/"):
                     try:
-                        # Get the content data
+                        # Get the content data - try many different attributes
                         image_content = None
-                        if hasattr(attachment, 'content'):
-                            image_content = attachment.content
-                        elif hasattr(attachment, 'data'):
-                            image_content = attachment.data
-                        elif hasattr(attachment, 'url'):
-                            # If it's a URL, we might need to fetch it
-                            LOGGER.warning("Attachment has URL instead of content: %s", attachment.url)
-                            continue
+                        content_source = None
+                        
+                        # List of possible content attributes
+                        content_attrs = ['content', 'data', 'binary_data', 'bytes', 'file_content', 'image_data', 'payload']
+                        
+                        for attr in content_attrs:
+                            if hasattr(attachment, attr):
+                                image_content = getattr(attachment, attr)
+                                if image_content:  # Check if not None/empty
+                                    content_source = attr
+                                    LOGGER.info("Found image content via attachment.%s", attr)
+                                    break
+                        
+                        # If still no content, try to read from file path/url
+                        if not image_content:
+                            if hasattr(attachment, 'file_path') and attachment.file_path:
+                                try:
+                                    with open(attachment.file_path, 'rb') as f:
+                                        image_content = f.read()
+                                        content_source = 'file_path'
+                                        LOGGER.info("Loaded image content from file: %s", attachment.file_path)
+                                except Exception as e:
+                                    LOGGER.error("Failed to read file %s: %s", attachment.file_path, e)
+                            elif hasattr(attachment, 'path') and attachment.path:
+                                try:
+                                    with open(attachment.path, 'rb') as f:
+                                        image_content = f.read()
+                                        content_source = 'path'
+                                        LOGGER.info("Loaded image content from path: %s", attachment.path)
+                                except Exception as e:
+                                    LOGGER.error("Failed to read path %s: %s", attachment.path, e)
+                            elif hasattr(attachment, 'url'):
+                                LOGGER.warning("Attachment has URL but no direct content: %s", attachment.url)
                         
                         if not image_content:
-                            LOGGER.error("Could not find image content in attachment")
+                            LOGGER.error("Could not find image content in attachment after trying all methods")
+                            LOGGER.error("Available attributes: %s", [attr for attr in dir(attachment) if not attr.startswith('_')])
                             continue
+                        
+                        LOGGER.info("Using image content from: %s (size: %d bytes)", content_source, len(image_content) if isinstance(image_content, bytes) else len(str(image_content)))
                             
                         # Convert image attachment to base64 URL format
                         if isinstance(image_content, bytes):
