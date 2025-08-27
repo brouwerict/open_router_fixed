@@ -1,0 +1,7 @@
+{
+  "name": "OpenRouter Fixed",
+  "content_in_root": false,
+  "render_readme": true,
+  "homeassistant": "2025.8.0",
+  "country": "NL"
+}
