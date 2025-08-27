@@ -5,13 +5,12 @@ from __future__ import annotations
 import base64
 from collections.abc import AsyncGenerator, Callable
 import json
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Dict, Literal, NotRequired, TypedDict
 
 import openai
 from openai import BadRequestError
 from openai.types.chat import (
     ChatCompletionAssistantMessageParam,
-    ChatCompletionFunctionToolParam,
     ChatCompletionMessage,
     ChatCompletionMessageFunctionToolCallParam,
     ChatCompletionMessageParam,
@@ -19,8 +18,30 @@ from openai.types.chat import (
     ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
 )
-from openai.types.chat.chat_completion_message_function_tool_call_param import Function
-from openai.types.shared_params import FunctionDefinition
+
+# Handle different OpenAI library versions for imports
+try:
+    from openai.types.chat import ChatCompletionFunctionToolParam
+except ImportError:
+    # Fallback for older versions - create a type alias
+    ChatCompletionFunctionToolParam = Dict[str, Any]
+
+try:
+    from openai.types.chat.chat_completion_message_function_tool_call_param import Function
+except ImportError:
+    # Fallback for older versions
+    class Function(TypedDict):
+        name: str
+        arguments: str
+
+try:
+    from openai.types.shared_params import FunctionDefinition
+except ImportError:
+    # Fallback for older versions  
+    class FunctionDefinition(TypedDict):
+        name: str
+        description: NotRequired[str]
+        parameters: NotRequired[Dict[str, Any]]
 
 # Handle different OpenAI library versions
 try:
@@ -113,7 +134,13 @@ def _format_tool(
     )
     if tool.description:
         tool_spec["description"] = tool.description
-    return ChatCompletionFunctionToolParam(type="function", function=tool_spec)
+    
+    # Create tool param compatible with both old and new OpenAI versions
+    try:
+        return ChatCompletionFunctionToolParam(type="function", function=tool_spec)
+    except (TypeError, AttributeError):
+        # Fallback to dict format for older versions
+        return {"type": "function", "function": tool_spec}
 
 
 def _convert_content_to_chat_message(
