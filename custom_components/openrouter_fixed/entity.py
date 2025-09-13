@@ -180,22 +180,7 @@ def _convert_content_to_chat_message(
             
             # Add attachments (images, etc.)
             for attachment in content.attachments:
-                # Debug: Log attachment structure
-                LOGGER.info("=== ATTACHMENT DEBUG INFO ===")
-                LOGGER.info("Attachment type: %s", type(attachment))
-                LOGGER.info("Attachment attributes: %s", dir(attachment))
-                
-                # Log ALL attribute values
-                for attr in dir(attachment):
-                    if not attr.startswith('_'):
-                        try:
-                            value = getattr(attachment, attr)
-                            if callable(value):
-                                LOGGER.info("Attachment.%s = <method>", attr)
-                            else:
-                                LOGGER.info("Attachment.%s = %s", attr, repr(value)[:200])
-                        except Exception as e:
-                            LOGGER.info("Attachment.%s = <error: %s>", attr, e)
+                LOGGER.debug("Processing attachment: %s", type(attachment))
                 
                 # Try different ways to get content type
                 content_type = None
@@ -222,7 +207,7 @@ def _convert_content_to_chat_message(
                         content_type = 'image/jpeg'
                         LOGGER.warning("Could not determine content type, defaulting to: %s", content_type)
                 
-                LOGGER.info("Processing attachment with content type: %s", content_type)
+                LOGGER.debug("Processing attachment with content type: %s", content_type)
                 
                 if content_type and content_type.startswith("image/"):
                     try:
@@ -238,7 +223,7 @@ def _convert_content_to_chat_message(
                                 image_content = getattr(attachment, attr)
                                 if image_content:  # Check if not None/empty
                                     content_source = attr
-                                    LOGGER.info("Found image content via attachment.%s", attr)
+                                    LOGGER.debug("Found image content via %s", attr)
                                     break
                         
                         # If still no content, try to read from file path/url
@@ -248,7 +233,7 @@ def _convert_content_to_chat_message(
                                     with open(attachment.file_path, 'rb') as f:
                                         image_content = f.read()
                                         content_source = 'file_path'
-                                        LOGGER.info("Loaded image content from file: %s", attachment.file_path)
+                                        LOGGER.debug("Loaded image content from file")
                                 except Exception as e:
                                     LOGGER.error("Failed to read file %s: %s", attachment.file_path, e)
                             elif hasattr(attachment, 'path') and attachment.path:
@@ -256,18 +241,17 @@ def _convert_content_to_chat_message(
                                     with open(attachment.path, 'rb') as f:
                                         image_content = f.read()
                                         content_source = 'path'
-                                        LOGGER.info("Loaded image content from path: %s", attachment.path)
+                                        LOGGER.debug("Loaded image content from path")
                                 except Exception as e:
                                     LOGGER.error("Failed to read path %s: %s", attachment.path, e)
                             elif hasattr(attachment, 'url'):
-                                LOGGER.warning("Attachment has URL but no direct content: %s", attachment.url)
+                                LOGGER.debug("Attachment has URL but no direct content")
                         
                         if not image_content:
-                            LOGGER.error("Could not find image content in attachment after trying all methods")
-                            LOGGER.error("Available attributes: %s", [attr for attr in dir(attachment) if not attr.startswith('_')])
+                            LOGGER.warning("Could not extract image content from attachment")
                             continue
                         
-                        LOGGER.info("Using image content from: %s (size: %d bytes)", content_source, len(image_content) if isinstance(image_content, bytes) else len(str(image_content)))
+                        LOGGER.debug("Using image content from: %s", content_source)
                             
                         # Convert image attachment to base64 URL format
                         if isinstance(image_content, bytes):
@@ -283,7 +267,7 @@ def _convert_content_to_chat_message(
                                 "detail": "high"  # Use high detail for better analysis
                             }
                         })
-                        LOGGER.info("Successfully added image attachment to message: %s", content_type)
+                        LOGGER.debug("Added image attachment: %s", content_type)
                     except Exception as e:
                         LOGGER.error("Failed to process image attachment: %s", e)
                         # Add error message to chat instead
