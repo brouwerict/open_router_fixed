@@ -1,7 +1,7 @@
 {
   "domain": "openrouter_fixed",
   "name": "OpenRouter Fixed",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "after_dependencies": ["assist_pipeline", "intent"],
   "codeowners": ["@brouwerict"],
   "config_flow": true,
@@ -11,5 +11,5 @@
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "quality_scale": "bronze",
-  "requirements": ["openai>=1.99.5,<2.0.0", "python-open-router>=0.3.1"]
+  "requirements": ["openai>=2.0.0", "python-open-router>=0.3.1"]
 }
