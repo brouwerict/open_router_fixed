@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from openai import AsyncOpenAI, AuthenticationError, OpenAIError
+from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_API_KEY, Platform
@@ -12,6 +12,9 @@ from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import LOGGER
 
+if TYPE_CHECKING:
+    from openai import AsyncOpenAI
+
 PLATFORMS = [Platform.AI_TASK, Platform.CONVERSATION]
 
 type OpenRouterConfigEntry = ConfigEntry[AsyncOpenAI]
@@ -19,6 +22,8 @@ type OpenRouterConfigEntry = ConfigEntry[AsyncOpenAI]
 
 async def async_setup_entry(hass: HomeAssistant, entry: OpenRouterConfigEntry) -> bool:
     """Set up OpenRouter from a config entry."""
+    from openai import AsyncOpenAI, AuthenticationError, OpenAIError
+
     client = AsyncOpenAI(
         base_url="https://openrouter.ai/api/v1",
         api_key=entry.data[CONF_API_KEY],

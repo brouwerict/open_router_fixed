@@ -7,67 +7,65 @@ from collections.abc import AsyncGenerator, Callable
 import json
 from typing import TYPE_CHECKING, Any, Dict, Literal, NotRequired, TypedDict
 
-import openai
-from openai import BadRequestError
-from openai.types.chat import (
-    ChatCompletionAssistantMessageParam,
-    ChatCompletionMessage,
-    ChatCompletionMessageParam,
-    ChatCompletionSystemMessageParam,
-    ChatCompletionToolMessageParam,
-    ChatCompletionUserMessageParam,
-)
+if TYPE_CHECKING:
+    from openai.types.chat import (
+        ChatCompletionAssistantMessageParam,
+        ChatCompletionMessage,
+        ChatCompletionMessageParam,
+        ChatCompletionSystemMessageParam,
+        ChatCompletionToolMessageParam,
+        ChatCompletionUserMessageParam,
+    )
 
-# Handle ChatCompletionMessageFunctionToolCallParam separately
-try:
-    from openai.types.chat import ChatCompletionMessageFunctionToolCallParam
-except ImportError:
-    # Fallback for older versions
-    ChatCompletionMessageFunctionToolCallParam = Dict[str, Any]
+    # Handle ChatCompletionMessageFunctionToolCallParam separately
+    try:
+        from openai.types.chat import ChatCompletionMessageFunctionToolCallParam
+    except ImportError:
+        # Fallback for older versions
+        ChatCompletionMessageFunctionToolCallParam = Dict[str, Any]
 
-# Handle different OpenAI library versions for imports
-try:
-    from openai.types.chat import ChatCompletionFunctionToolParam
-except ImportError:
-    # Fallback for older versions - create a type alias
-    ChatCompletionFunctionToolParam = Dict[str, Any]
+    # Handle different OpenAI library versions for imports
+    try:
+        from openai.types.chat import ChatCompletionFunctionToolParam
+    except ImportError:
+        # Fallback for older versions - create a type alias
+        ChatCompletionFunctionToolParam = Dict[str, Any]
 
-try:
-    from openai.types.chat.chat_completion_message_function_tool_call_param import Function
-except ImportError:
-    # Fallback for older versions
-    class Function(TypedDict):
-        name: str
-        arguments: str
+    try:
+        from openai.types.chat.chat_completion_message_function_tool_call_param import Function
+    except ImportError:
+        # Fallback for older versions
+        class Function(TypedDict):
+            name: str
+            arguments: str
 
-try:
-    from openai.types.shared_params import FunctionDefinition
-except ImportError:
-    # Fallback for older versions  
-    class FunctionDefinition(TypedDict):
-        name: str
-        description: NotRequired[str]
-        parameters: NotRequired[Dict[str, Any]]
+    try:
+        from openai.types.shared_params import FunctionDefinition
+    except ImportError:
+        # Fallback for older versions
+        class FunctionDefinition(TypedDict):
+            name: str
+            description: NotRequired[str]
+            parameters: NotRequired[Dict[str, Any]]
 
-# Handle different OpenAI library versions
-try:
-    from openai.types.shared_params import ResponseFormatJSONSchema
-    from openai.types.shared_params.response_format_json_schema import JSONSchema
-except ImportError:
-    # Fallback for older OpenAI library versions
-    from typing import TypedDict
-    
-    class JSONSchema(TypedDict, total=False):
-        """Fallback JSONSchema type."""
-        name: str
-        description: str | None
-        schema: dict[str, Any]
-        strict: bool | None
-    
-    class ResponseFormatJSONSchema(TypedDict):
-        """Fallback ResponseFormatJSONSchema type."""
-        type: Literal["json_schema"]
-        json_schema: JSONSchema
+    # Handle different OpenAI library versions
+    try:
+        from openai.types.shared_params import ResponseFormatJSONSchema
+        from openai.types.shared_params.response_format_json_schema import JSONSchema
+    except ImportError:
+        # Fallback for older OpenAI library versions
+
+        class JSONSchema(TypedDict, total=False):
+            """Fallback JSONSchema type."""
+            name: str
+            description: str | None
+            schema: dict[str, Any]
+            strict: bool | None
+
+        class ResponseFormatJSONSchema(TypedDict):
+            """Fallback ResponseFormatJSONSchema type."""
+            type: Literal["json_schema"]
+            json_schema: JSONSchema
 import voluptuous as vol
 from voluptuous_openapi import convert
 
@@ -134,16 +132,26 @@ def _format_tool(
     custom_serializer: Callable[[Any], Any] | None,
 ) -> ChatCompletionFunctionToolParam:
     """Format tool specification."""
+    try:
+        from openai.types.shared_params import FunctionDefinition
+    except ImportError:
+        FunctionDefinition = dict  # type: ignore[assignment,misc]
+
+    try:
+        from openai.types.chat import ChatCompletionFunctionToolParam as ToolParam
+    except ImportError:
+        ToolParam = dict  # type: ignore[assignment,misc]
+
     tool_spec = FunctionDefinition(
         name=tool.name,
         parameters=convert(tool.parameters, custom_serializer=custom_serializer),
     )
     if tool.description:
         tool_spec["description"] = tool.description
-    
+
     # Create tool param compatible with both old and new OpenAI versions
     try:
-        return ChatCompletionFunctionToolParam(type="function", function=tool_spec)
+        return ToolParam(type="function", function=tool_spec)
     except (TypeError, AttributeError):
         # Fallback to dict format for older versions
         return {"type": "function", "function": tool_spec}
@@ -153,6 +161,23 @@ def _convert_content_to_chat_message(
     content: conversation.Content,
 ) -> ChatCompletionMessageParam | None:
     """Convert any native chat message for this agent to the native format."""
+    from openai.types.chat import (
+        ChatCompletionAssistantMessageParam,
+        ChatCompletionSystemMessageParam,
+        ChatCompletionToolMessageParam,
+        ChatCompletionUserMessageParam,
+    )
+
+    try:
+        from openai.types.chat import ChatCompletionMessageFunctionToolCallParam
+    except ImportError:
+        ChatCompletionMessageFunctionToolCallParam = dict  # type: ignore[assignment,misc]
+
+    try:
+        from openai.types.chat.chat_completion_message_function_tool_call_param import Function
+    except ImportError:
+        Function = dict  # type: ignore[assignment,misc]
+
     LOGGER.debug("_convert_content_to_chat_message=%s", content)
     if isinstance(content, conversation.ToolResultContent):
         return ChatCompletionToolMessageParam(
@@ -370,6 +395,12 @@ class OpenRouterEntity(Entity):
         structure: vol.Schema | None = None,
     ) -> None:
         """Generate an answer for the chat log."""
+        import openai
+
+        try:
+            from openai.types.shared_params import ResponseFormatJSONSchema
+        except ImportError:
+            ResponseFormatJSONSchema = dict  # type: ignore[assignment,misc]
 
         model_args = {
             "model": self.model,

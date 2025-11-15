@@ -3,14 +3,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from python_open_router import (
-    Model,
-    OpenRouterClient,
-    OpenRouterError,
-    SupportedParameter,
-)
+if TYPE_CHECKING:
+    from python_open_router import Model, SupportedParameter
+
 import voluptuous as vol
 
 from homeassistant.config_entries import (
@@ -57,6 +54,8 @@ class OpenRouterConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle the initial step."""
+        from python_open_router import OpenRouterClient, OpenRouterError
+
         errors = {}
         if user_input is not None:
             self._async_abort_entries_match(user_input)
@@ -95,6 +94,8 @@ class OpenRouterSubentryFlowHandler(ConfigSubentryFlow):
 
     async def _get_models(self) -> None:
         """Fetch models from OpenRouter."""
+        from python_open_router import OpenRouterClient
+
         entry = self._get_entry()
         client = OpenRouterClient(
             entry.data[CONF_API_KEY], async_get_clientsession(self.hass)
@@ -139,6 +140,8 @@ class ConversationFlowHandler(OpenRouterSubentryFlowHandler):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """User flow to create a sensor subentry."""
+        from python_open_router import OpenRouterError
+
         if user_input is not None:
             if not user_input.get(CONF_LLM_HASS_API):
                 user_input.pop(CONF_LLM_HASS_API, None)
@@ -199,6 +202,8 @@ class AITaskDataFlowHandler(OpenRouterSubentryFlowHandler):
         self, user_input: dict[str, Any] | None = None
     ) -> SubentryFlowResult:
         """User flow to create a sensor subentry."""
+        from python_open_router import OpenRouterError, SupportedParameter
+
         if user_input is not None:
             return self.async_create_entry(
                 title=self.models[user_input[CONF_MODEL]].name, data=user_input
@@ -214,7 +219,7 @@ class AITaskDataFlowHandler(OpenRouterSubentryFlowHandler):
         options = []
         structured_models = []
         other_models = []
-        
+
         for model in self.models.values():
             option = SelectOptionDict(value=model.id, label=model.name)
             if SupportedParameter.STRUCTURED_OUTPUTS in model.supported_parameters:
