@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections.abc import AsyncGenerator, Callable
 import json
@@ -461,17 +462,109 @@ class OpenRouterEntity(Entity):
             LOGGER.info("Sending image content to model: %s", self.model)
             
         for _iteration in range(MAX_TOOL_ITERATIONS):
-            try:
-                result = await client.chat.completions.create(**model_args)
-            except openai.BadRequestError as err:
-                if "vision" in str(err).lower() or "image" in str(err).lower():
-                    LOGGER.error("Model %s does not support vision/images. Please use a vision-capable model like gpt-4-vision-preview, claude-3-haiku, etc.", self.model)
-                    raise HomeAssistantError(f"Model {self.model} does not support images. Please configure a vision-capable model.") from err
-                LOGGER.error("Bad request to API: %s", err)
-                raise HomeAssistantError("Bad request to API") from err
-            except openai.OpenAIError as err:
-                LOGGER.error("Error talking to API: %s", err)
-                raise HomeAssistantError("Error talking to API") from err
+            # Retry logic for transient errors
+            max_retries = 2
+            last_error = None
+
+            for retry_attempt in range(max_retries + 1):
+                try:
+                    result = await client.chat.completions.create(**model_args)
+                    break  # Success, exit retry loop
+                except openai.BadRequestError as err:
+                    # Handle 400 errors - usually permanent
+                    err_msg = str(err).lower()
+
+                    # Check for vision/image errors (404 in error message)
+                    if "vision" in err_msg or "image" in err_msg or "no endpoints found" in err_msg:
+                        if "image input" in err_msg:
+                            LOGGER.error("Model %s does not support image inputs", self.model)
+                            raise HomeAssistantError(
+                                f"Model {self.model} does not support images. Please configure a vision-capable model "
+                                "(e.g., gpt-4-vision-preview, claude-3-haiku, gemini-pro-vision)."
+                            ) from err
+                        LOGGER.error("Model %s vision error: %s", self.model, err)
+                        raise HomeAssistantError(f"Model {self.model} does not support images. Please configure a vision-capable model.") from err
+
+                    LOGGER.error("Bad request to API: %s", err)
+                    raise HomeAssistantError(f"Bad request to API: {err}") from err
+
+                except openai.APIStatusError as err:
+                    # Handle HTTP status errors (503, 429, 404, etc.)
+                    status_code = err.status_code
+
+                    # Try to extract provider and error details
+                    provider_name = "Unknown"
+                    error_detail = str(err)
+                    try:
+                        if hasattr(err, 'response') and err.response:
+                            error_data = err.response.json() if hasattr(err.response, 'json') else {}
+                            if isinstance(error_data, dict):
+                                error_info = error_data.get('error', {})
+                                provider_name = error_info.get('metadata', {}).get('provider_name', 'Unknown')
+                                error_detail = error_info.get('message', str(err))
+                                raw_detail = error_info.get('metadata', {}).get('raw', '')
+                                if raw_detail:
+                                    error_detail = f"{error_detail} ({raw_detail})"
+                    except Exception:
+                        pass  # Use default error_detail
+
+                    # Handle specific status codes
+                    if status_code == 503:
+                        # Service unavailable - temporary capacity issue
+                        if retry_attempt < max_retries:
+                            retry_delay = 5 * (retry_attempt + 1)  # 5s, 10s
+                            LOGGER.warning(
+                                "Provider '%s' temporarily unavailable (attempt %d/%d). Retrying in %ds...",
+                                provider_name, retry_attempt + 1, max_retries + 1, retry_delay
+                            )
+                            last_error = err
+                            await asyncio.sleep(retry_delay)
+                            continue  # Retry
+                        else:
+                            LOGGER.error("Provider '%s' unavailable after %d retries: %s", provider_name, max_retries, error_detail)
+                            raise HomeAssistantError(
+                                f"Provider '{provider_name}' is temporarily at capacity. Please try again in a few minutes or select a different model."
+                            ) from err
+
+                    elif status_code == 429:
+                        # Rate limit - could be temporary
+                        if retry_attempt < max_retries:
+                            retry_delay = 10 * (retry_attempt + 1)  # 10s, 20s
+                            LOGGER.warning(
+                                "Rate limited by provider '%s' (attempt %d/%d). Retrying in %ds...",
+                                provider_name, retry_attempt + 1, max_retries + 1, retry_delay
+                            )
+                            last_error = err
+                            await asyncio.sleep(retry_delay)
+                            continue  # Retry
+                        else:
+                            LOGGER.error("Rate limit persists after %d retries: %s", max_retries, error_detail)
+                            raise HomeAssistantError(
+                                f"Rate limit exceeded: {error_detail}. Please wait before retrying or upgrade to a paid plan."
+                            ) from err
+
+                    elif status_code == 404:
+                        # Not found - usually a configuration issue
+                        LOGGER.error("API endpoint not found (404): %s", error_detail)
+                        raise HomeAssistantError(f"API error (404): {error_detail}") from err
+
+                    else:
+                        # Other HTTP errors
+                        LOGGER.error("API returned status %d: %s", status_code, error_detail)
+                        raise HomeAssistantError(f"API error ({status_code}): {error_detail}") from err
+
+                except openai.OpenAIError as err:
+                    # Generic OpenAI errors (network, auth, etc.)
+                    LOGGER.error("Error talking to API: %s", err)
+                    raise HomeAssistantError(f"Error talking to API: {err}") from err
+
+            # If we exited retry loop due to max retries, the break above wasn't hit
+            # So we need to check if result was set
+            if 'result' not in locals():
+                if last_error:
+                    raise HomeAssistantError("Failed after retries") from last_error
+                else:
+                    raise HomeAssistantError("Failed to get API response")
 
             result_message = result.choices[0].message
 

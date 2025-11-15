@@ -1,7 +1,7 @@
 {
   "domain": "openrouter_fixed",
   "name": "OpenRouter Fixed",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "after_dependencies": ["assist_pipeline", "intent"],
   "codeowners": ["@brouwerict"],
   "config_flow": true,
